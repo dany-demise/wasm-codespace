@@ -1,5 +1,6 @@
 #include <emscripten/bind.h>
 #include <iostream>
+#include "libraries/libraw/LibRaw-0.21.1/libraw/libraw.h"
 
  int processBuffer() {
     return 0;
@@ -19,6 +20,40 @@ extern "C" {
         // For demonstration, let's just print the first few bytes
         printf("Byte %zu: %u\n", i, byte);
     }
+
+    // 2) Open buffer with LibRaw
+    LibRaw RawProcessor;
+    int ret = RawProcessor.open_buffer(dataPtr, dataSize);
+    if (ret != LIBRAW_SUCCESS) {
+        throw std::runtime_error("LibRaw: open_buffer() failed, code = " + std::to_string(ret));
+    }
+    // 3) Unpack the RAW data
+    ret = RawProcessor.unpack();
+    if (ret != LIBRAW_SUCCESS) {
+        throw std::runtime_error("LibRaw: unpack() failed, code = " + std::to_string(ret));
+    }
+    // 4) Perform default processing (demosaicing, etc.)
+    ret = RawProcessor.dcraw_process();
+    if (ret != LIBRAW_SUCCESS) {
+        throw std::runtime_error("LibRaw: dcraw_process() failed, code = " + std::to_string(ret));
+    }
+
+    // 5) Retrieve processed image data in memory
+    libraw_processed_image_t* image = RawProcessor.dcraw_make_mem_image(&ret);
+    if (!image || ret != LIBRAW_SUCCESS) {
+        throw std::runtime_error("LibRaw: dcraw_make_mem_image() failed, code = " + std::to_string(ret));
+    }
+    else {
+        printf("Great success\n");
+        
+        // Print image dimensions
+        printf("Image width: %d\n", image->width);
+        printf("Image height: %d\n", image->height);
+        printf("Image bits: %d\n", image->bits);
+
+        // Remember to free the memory allocated for the image
+        LibRaw::dcraw_clear_mem(image);
+    }  
   }
 }
 
