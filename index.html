@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>File Input Example</title>
+</head>
+<body>
+  <input type="file" id="fileInput" />
+  <button id="readFileButton">Read File</button>
+  <div id="output"></div>
+
+  <script type="module">
+    import createTestPtrModule from './out/ptr_test.js'
+    // Assuming you have an ArrayBuffer named 'arrayBuffer'
+    const Module = await createTestPtrModule();
+
+    const fileInput = document.getElementById('fileInput');
+    const readFileButton = document.getElementById('readFileButton');
+    const outputDiv = document.getElementById('output');
+
+    readFileButton.addEventListener('click', async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        outputDiv.textContent = 'Please select a file';
+        return;
+      }
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        outputDiv.textContent = `File contents: ${arrayBuffer.byteLength} bytes`;
+        var buf = Module._malloc(arrayBuffer.byteLength);
+        var rawImageArray = new Uint8Array(arrayBuffer);
+        Module.HEAPU8.set(rawImageArray, buf);
+        console.log(Module);
+        Module._processData(buf, arrayBuffer.byteLength);
+        Module._free(buf)
+      } catch (error) {
+        outputDiv.textContent = `Error reading file: ${error.message}`;
+      }
+    });
+
+
+  </script>
+</body>
+</html>

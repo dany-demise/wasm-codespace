@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>TypeScript AST in the Browser</title>
+    <!-- Import the TypeScript compiler from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.7.3/typescript.js"></script>
+  </head>
+  <body>
+    <script>
+      // Your TypeScript code as a string
+      const tsCode = `
+        interface Person {
+          name: string;
+        }
+
+        function greet(person: Person): string {
+          return \`Hello, \${person.name}!\`;
+        }
+      `;
+
+      // 1. Parse the TypeScript code into an AST
+      const sourceFile = ts.createSourceFile(
+        "myFile.ts",
+        tsCode,
+        ts.ScriptTarget.ESNext,
+        /* setParentNodes */ true
+      );
+
+      // 2. Function to serialize the AST safely
+      function serializeAST(node) {
+        const seen = new WeakSet(); // Track visited nodes to prevent infinite recursion
+        return JSON.stringify(node, (key, value) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) {
+              return; // Skip circular references
+            }
+            seen.add(value);
+          }
+          return value; // Include non-circular properties
+        }, 2); // Pretty-print with 2 spaces
+      }
+
+      // 3. Serialize the AST
+      const astJSON = serializeAST(sourceFile);
+
+      // 4. Display the serialized AST in the browser
+      const pre = document.createElement("pre");
+      pre.textContent = astJSON;
+      document.body.appendChild(pre);
+
+      // 5. Log the raw AST to the console for exploration
+      console.log("Raw AST:", sourceFile);
+    </script>
+  </body>
+</html>
