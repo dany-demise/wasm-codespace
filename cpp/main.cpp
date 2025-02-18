@@ -1,10 +1,61 @@
 #include <emscripten/bind.h>
 #include <iostream>
 #include "libraries/libraw/LibRaw-0.21.1/libraw/libraw.h"
+#include <stdlib.h>
+#include <malloc.h>
 
  int processBuffer() {
     return 0;
 }
+
+extern "C" {
+    EMSCRIPTEN_KEEPALIVE
+    uint8_t* processImageData(uint8_t* dataPtr, size_t dataSize, int* width, int* height, int* colors, size_t* imageSize) {
+        printf("Received data of size: %zu bytes\n", dataSize);
+
+        LibRaw RawProcessor;
+        int ret = RawProcessor.open_buffer(dataPtr, dataSize);
+        if (ret != LIBRAW_SUCCESS) {
+            throw std::runtime_error("LibRaw: open_buffer() failed, code = " + std::to_string(ret));
+        }
+        
+        ret = RawProcessor.unpack();
+        if (ret != LIBRAW_SUCCESS) {
+            throw std::runtime_error("LibRaw: unpack() failed, code = " + std::to_string(ret));
+        }
+        
+        RawProcessor.imgdata.params.output_bps = 8;
+        ret = RawProcessor.dcraw_process();
+        if (ret != LIBRAW_SUCCESS) {
+            throw std::runtime_error("LibRaw: dcraw_process() failed, code = " + std::to_string(ret));
+        }
+
+        libraw_processed_image_t* image = RawProcessor.dcraw_make_mem_image(&ret);
+        if (!image || ret != LIBRAW_SUCCESS) {
+            throw std::runtime_error("LibRaw: dcraw_make_mem_image() failed, code = " + std::to_string(ret));
+        }
+
+        printf("Processing successful\n");
+        printf("Image width: %d\n", image->width);
+        printf("Image height: %d\n", image->height);
+        printf("Image colors: %d\n", image->colors);
+
+        *width = image->width;
+        *height = image->height;
+        *colors = image->colors;
+        *imageSize = image->data_size;
+
+        uint8_t* outputData = (uint8_t*)malloc(image->data_size);
+        if (!outputData) {
+            throw std::runtime_error("Memory allocation failed");
+        }
+        memcpy(outputData, image->data, image->data_size);
+
+        LibRaw::dcraw_clear_mem(image);
+        return outputData;
+    }
+}
+
 
 
 extern "C" {
@@ -33,6 +84,7 @@ extern "C" {
         throw std::runtime_error("LibRaw: unpack() failed, code = " + std::to_string(ret));
     }
     // 4) Perform default processing (demosaicing, etc.)
+    RawProcessor.imgdata.params.output_bps = 8;
     ret = RawProcessor.dcraw_process();
     if (ret != LIBRAW_SUCCESS) {
         throw std::runtime_error("LibRaw: dcraw_process() failed, code = " + std::to_string(ret));
@@ -49,7 +101,7 @@ extern "C" {
         // Print image dimensions
         printf("Image width: %d\n", image->width);
         printf("Image height: %d\n", image->height);
-        printf("Image bits: %d\n", image->bits);
+        printf("Image colors: %d\n", image->colors);
 
         // Remember to free the memory allocated for the image
         LibRaw::dcraw_clear_mem(image);

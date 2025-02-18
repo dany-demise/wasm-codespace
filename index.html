@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>File Input Example</title>
 </head>
+
 <body>
-  <input type="file" id="fileInput" />
+  <input type="file" id="fileInput" multiple />
   <button id="readFileButton">Read File</button>
   <div id="output"></div>
 
   <script type="module">
-    import createLibRawModule from './out/libraw.js'
-    // Assuming you have an ArrayBuffer named 'arrayBuffer'
+    import createLibRawModule from './out/libraw.js';
+
+    let images = new Array();
+
     const Module = await createLibRawModule();
 
     const fileInput = document.getElementById('fileInput');
@@ -18,27 +22,95 @@
     const outputDiv = document.getElementById('output');
 
     readFileButton.addEventListener('click', async () => {
-      const file = fileInput.files[0];
-      if (!file) {
-        outputDiv.textContent = 'Please select a file';
-        return;
+
+      for (let file of fileInput.files) {
+        if (!file) {
+          outputDiv.textContent = 'Please select a file';
+          return;
+        }
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const rawImageArray = new Uint8Array(arrayBuffer);
+
+          // Allocate memory in WebAssembly heap
+          const buf = Module._malloc(arrayBuffer.byteLength);
+          Module.HEAPU8.set(rawImageArray, buf);
+
+          // Allocate memory for width, height, colors, and image size
+          const widthPtr = Module._malloc(4);
+          const heightPtr = Module._malloc(4);
+          const colorsPtr = Module._malloc(4);
+          const imageSizePtr = Module._malloc(4);
+
+          // Call the processImageData function
+          const imagePtr = Module._processImageData(buf, arrayBuffer.byteLength, widthPtr, heightPtr, colorsPtr, imageSizePtr);
+
+          if (!imagePtr) {
+            throw new Error("Image processing failed");
+          }
+
+          // Read the output parameters
+          const width = Module.HEAP32[widthPtr / 4];
+          const height = Module.HEAP32[heightPtr / 4];
+          const colors = Module.HEAP32[colorsPtr / 4];
+          const imageSize = Module.HEAP32[imageSizePtr / 4];
+
+
+          console.log(`Processed Image - Width: ${width}, Height: ${height}, Colors: ${colors}, Size: ${imageSize} bytes`);
+
+          // Convert image data to Uint8Array
+          const processedImageData = new Uint8Array(Module.HEAPU8.buffer, imagePtr, imageSize);
+
+          images.push(processedImageData);
+
+          // Display some pixel data in console
+          console.log('First few bytes of processed image:', processedImageData.slice(20000000, 2000010));
+
+          // displayImage(processedImageData, width, height);
+
+          // Free allocated memory
+          Module._free(buf);
+          Module._free(widthPtr);
+          Module._free(heightPtr);
+          Module._free(colorsPtr);
+          Module._free(imageSizePtr);
+          Module._free(imagePtr); // Free the processed image buffer
+
+          // Output image info
+          // outputDiv.textContent = `Processed Image: ${width}x${height}, ${colors} colors, Size: ${imageSize} bytes`;
+
+        } catch (error) {
+          outputDiv.textContent = `Error processing file: ${error.message}`;
+        }
       }
 
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        outputDiv.textContent = `File contents: ${arrayBuffer.byteLength} bytes`;
-        var buf = Module._malloc(arrayBuffer.byteLength);
-        var rawImageArray = new Uint8Array(arrayBuffer);
-        await Module.HEAPU8.set(rawImageArray, buf);
-        console.log(Module);
-        await Module._processData(buf, arrayBuffer.byteLength);
-        // await Module._free(buf)
-      } catch (error) {
-        outputDiv.textContent = `Error reading file: ${error.message}`;
-      }
+      console.log(images);
     });
+
+    function displayImage(processedImageArray, width, height) {
+      const canvas = document.createElement('canvas');
+      canvas.style.maxWidth = '1000px';
+      canvas.width = width;
+      canvas.height = height;
+      document.body.appendChild(canvas); // Append canvas to the body or another container
+
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(width, height);
+
+      // Assuming the processed image data is in RGB format
+      for (let i = 0, j = 0; i < processedImageArray.length; i += 3, j += 4) {
+        imageData.data[j] = processedImageArray[i];     // R
+        imageData.data[j + 1] = processedImageArray[i + 1]; // G
+        imageData.data[j + 2] = processedImageArray[i + 2]; // B
+        imageData.data[j + 3] = 255; // Alpha (fully opaque)
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    }
 
 
   </script>
 </body>
+
 </html>

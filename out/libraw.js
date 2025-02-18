@@ -5411,9 +5411,10 @@ var wasmImports = {
 };
 var wasmExports = await createWasm();
 var ___wasm_call_ctors = createExportWrapper('__wasm_call_ctors', 0);
+var _processImageData = Module['_processImageData'] = createExportWrapper('processImageData', 6);
+var _malloc = Module['_malloc'] = createExportWrapper('malloc', 1);
 var _processData = Module['_processData'] = createExportWrapper('processData', 2);
 var _main = createExportWrapper('main', 2);
-var _malloc = Module['_malloc'] = createExportWrapper('malloc', 1);
 var _free = Module['_free'] = createExportWrapper('free', 1);
 var ___getTypeName = createExportWrapper('__getTypeName', 1);
 var _fflush = createExportWrapper('fflush', 1);
