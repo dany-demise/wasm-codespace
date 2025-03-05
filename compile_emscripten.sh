@@ -9,5 +9,5 @@ emcc -O2 cpp/main.cpp -o out/ptr_test.js \
     -s INITIAL_MEMORY=131072 \
     -s STACK_SIZE = 4194304 \
     -s "EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap']" \
-    -s "EXPORTED_FUNCTIONS=['_malloc', '_free', '_processData']" \
+    -s "EXPORTED_FUNCTIONS=['_malloc', '_free']" \
     --bind

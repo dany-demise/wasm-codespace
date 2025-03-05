@@ -4,16 +4,13 @@
 #include <stdlib.h>
 #include <malloc.h>
 
- int processBuffer() {
-    return 0;
-}
+LibRaw RawProcessor;
 
 extern "C" {
     EMSCRIPTEN_KEEPALIVE
     uint8_t* processImageData(uint8_t* dataPtr, size_t dataSize, int* width, int* height, int* colors, size_t* imageSize) {
         printf("Received data of size: %zu bytes\n", dataSize);
 
-        LibRaw RawProcessor;
         int ret = RawProcessor.open_buffer(dataPtr, dataSize);
         if (ret != LIBRAW_SUCCESS) {
             throw std::runtime_error("LibRaw: open_buffer() failed, code = " + std::to_string(ret));
@@ -24,7 +21,7 @@ extern "C" {
             throw std::runtime_error("LibRaw: unpack() failed, code = " + std::to_string(ret));
         }
         
-        RawProcessor.imgdata.params.output_bps = 8;
+        RawProcessor.imgdata.params.output_bps = 16;
         ret = RawProcessor.dcraw_process();
         if (ret != LIBRAW_SUCCESS) {
             throw std::runtime_error("LibRaw: dcraw_process() failed, code = " + std::to_string(ret));
@@ -58,71 +55,91 @@ extern "C" {
 
 
 
-extern "C" {
-  EMSCRIPTEN_KEEPALIVE
-  void processData(uint8_t* dataPtr, size_t dataSize) {
-    // Example: Print the data size
-    printf("Received data of size: %zu bytes\n", dataSize);
+    // Sets parameters from a JavaScript object
+    EMSCRIPTEN_KEEPALIVE
+    void setParams(emscripten::val jsObj) {
+        // Update only if the property exists in the passed object.
+        if(jsObj.hasOwnProperty("user_flip"))
+            RawProcessor.imgdata.params.user_flip = jsObj["user_flip"].as<int>();
+        if(jsObj.hasOwnProperty("half_size"))
+            RawProcessor.imgdata.params.half_size = jsObj["half_size"].as<bool>();
+        if(jsObj.hasOwnProperty("four_color_rgb"))
+            RawProcessor.imgdata.params.four_color_rgb = jsObj["four_color_rgb"].as<bool>();
+        if(jsObj.hasOwnProperty("dcb_iterations"))
+            RawProcessor.imgdata.params.dcb_iterations = jsObj["dcb_iterations"].as<int>();
+        if(jsObj.hasOwnProperty("fbdd_noiserd"))
+            RawProcessor.imgdata.params.fbdd_noiserd = jsObj["fbdd_noiserd"].as<int>();
+        if(jsObj.hasOwnProperty("use_camera_wb"))
+            RawProcessor.imgdata.params.use_camera_wb = jsObj["use_camera_wb"].as<bool>();
+        if(jsObj.hasOwnProperty("use_auto_wb"))
+            RawProcessor.imgdata.params.use_auto_wb = jsObj["use_auto_wb"].as<bool>();
+        // if(jsObj.hasOwnProperty("output_bps"))
+        //     RawProcessor.imgdata.params.output_bps = jsObj["output_bps"].as<int>();
+        if(jsObj.hasOwnProperty("no_auto_bright"))
+            RawProcessor.imgdata.params.no_auto_bright = jsObj["no_auto_bright"].as<bool>();
+        if(jsObj.hasOwnProperty("auto_bright_thr"))
+            RawProcessor.imgdata.params.auto_bright_thr = jsObj["auto_bright_thr"].as<float>();
+        if(jsObj.hasOwnProperty("adjust_maximum_thr"))
+            RawProcessor.imgdata.params.adjust_maximum_thr = jsObj["adjust_maximum_thr"].as<float>();
+        if(jsObj.hasOwnProperty("bright"))
+            RawProcessor.imgdata.params.bright = jsObj["bright"].as<float>();
+        if(jsObj.hasOwnProperty("highlight"))
+            RawProcessor.imgdata.params.highlight = jsObj["highlight"].as<int>();
+        if(jsObj.hasOwnProperty("exp_shift"))
+            RawProcessor.imgdata.params.exp_shift = jsObj["exp_shift"].as<float>();
+        if(jsObj.hasOwnProperty("exp_preserve_highlights"))
+            RawProcessor.imgdata.params.adjust_maximum_thr = jsObj["exp_preserve_highlights"].as<float>();
+        if(jsObj.hasOwnProperty("no_auto_scale"))
+            RawProcessor.imgdata.params.no_auto_scale = jsObj["no_auto_scale"].as<bool>();
 
-    // Example: Access the data
-    for (size_t i = 0; i < 1000; ++i) {
-        // Process each byte as needed
-        uint8_t byte = dataPtr[i];
-        // For demonstration, let's just print the first few bytes
-        printf("Byte %zu: %u\n", i, byte);
+        // Handle gamma array if provided (expecting at least 2 values)
+        if(jsObj.hasOwnProperty("gamm")) {
+            emscripten::val gamm = jsObj["gamm"];
+            if(gamm.hasOwnProperty("length") && gamm["length"].as<unsigned>() >= 2) {
+                RawProcessor.imgdata.params.gamm[0] = gamm[0].as<float>();
+                RawProcessor.imgdata.params.gamm[1] = gamm[1].as<float>();
+            }
+        }
     }
 
-    // 2) Open buffer with LibRaw
-    LibRaw RawProcessor;
-    int ret = RawProcessor.open_buffer(dataPtr, dataSize);
-    if (ret != LIBRAW_SUCCESS) {
-        throw std::runtime_error("LibRaw: open_buffer() failed, code = " + std::to_string(ret));
-    }
-    // 3) Unpack the RAW data
-    ret = RawProcessor.unpack();
-    if (ret != LIBRAW_SUCCESS) {
-        throw std::runtime_error("LibRaw: unpack() failed, code = " + std::to_string(ret));
-    }
-    // 4) Perform default processing (demosaicing, etc.)
-    RawProcessor.imgdata.params.output_bps = 8;
-    ret = RawProcessor.dcraw_process();
-    if (ret != LIBRAW_SUCCESS) {
-        throw std::runtime_error("LibRaw: dcraw_process() failed, code = " + std::to_string(ret));
-    }
-
-    // 5) Retrieve processed image data in memory
-    libraw_processed_image_t* image = RawProcessor.dcraw_make_mem_image(&ret);
-    if (!image || ret != LIBRAW_SUCCESS) {
-        throw std::runtime_error("LibRaw: dcraw_make_mem_image() failed, code = " + std::to_string(ret));
-    }
-    else {
-        printf("Great success\n");
+    // Returns the current parameters as a JavaScript object
+    EMSCRIPTEN_KEEPALIVE
+    emscripten::val getParams() {
+        emscripten::val obj = emscripten::val::object();
+        obj.set("user_flip", RawProcessor.imgdata.params.user_flip);
+        obj.set("half_size", RawProcessor.imgdata.params.half_size);
+        obj.set("four_color_rgb", RawProcessor.imgdata.params.four_color_rgb);
+        obj.set("dcb_iterations", RawProcessor.imgdata.params.dcb_iterations);
+        obj.set("dcb_iterations", RawProcessor.imgdata.params.dcb_iterations);
+        obj.set("fbdd_noiserd", RawProcessor.imgdata.params.fbdd_noiserd);
+        obj.set("use_camera_wb", RawProcessor.imgdata.params.use_camera_wb);
+        obj.set("use_auto_wb", RawProcessor.imgdata.params.use_auto_wb);
+        // obj.set("output_bps", RawProcessor.imgdata.params.output_bps);
+        obj.set("no_auto_bright", RawProcessor.imgdata.params.no_auto_bright);
+        obj.set("auto_bright_thr", RawProcessor.imgdata.params.auto_bright_thr);
+        obj.set("adjust_maximum_thr", RawProcessor.imgdata.params.adjust_maximum_thr);
+        obj.set("bright", RawProcessor.imgdata.params.bright);
+        obj.set("highlight", RawProcessor.imgdata.params.highlight);
+        obj.set("exp_shift", RawProcessor.imgdata.params.exp_shift);
+        obj.set("exp_preserve_highlights", RawProcessor.imgdata.params.adjust_maximum_thr);
+        obj.set("no_auto_scale", RawProcessor.imgdata.params.no_auto_scale);
         
-        // Print image dimensions
-        printf("Image width: %d\n", image->width);
-        printf("Image height: %d\n", image->height);
-        printf("Image colors: %d\n", image->colors);
+        // Create a JavaScript array for gamma values.
+        emscripten::val gamm = emscripten::val::array();
+        gamm.set(emscripten::val(0), RawProcessor.imgdata.params.gamm[0]);
+        gamm.set(emscripten::val(1), RawProcessor.imgdata.params.gamm[1]);
+        obj.set("gamm", gamm);
 
-        // Remember to free the memory allocated for the image
-        LibRaw::dcraw_clear_mem(image);
-    }  
-  }
-}
+        return obj;
+    }
 
-// void processData(uint8_t* dataPtr, size_t dataSize) {
-    
-// }
+    EMSCRIPTEN_BINDINGS(LibRawModule) {
+        emscripten::function("_setParams", &setParams);
+        emscripten::function("_getParams", &getParams);
+      }
 
-// Main function as an entry point for the WebAssembly module
-int main() {
-    std::cout << "WebAssembly module loaded successfully!" << std::endl;
-    return 0;
-}
 
-// Bind the function so it's accessible from JavaScript
-EMSCRIPTEN_BINDINGS(testModule)
-{
-   // emscripten::function( "processData", &processData, emscripten::allow_raw_pointer<emscripten::arg<1>>() );
-}
 
-//     emscripten::function( "processBuffer", &processBuffer, emscripten::allow_raw_pointer<emscripten::arg<1>>() );
+
+
+

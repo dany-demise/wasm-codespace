@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-emcc cpp/main.cpp \
+emcc -O3 cpp/main.cpp \
     cpp/libraries/libraw/LibRaw-0.21.1/lib/.libs/libraw.a \
     -I/./cpp/libraries/libraw/LibRaw-0.21.1/libraw \
     -o out/libraw.js \
@@ -11,6 +11,6 @@ emcc cpp/main.cpp \
     -s ALLOW_TABLE_GROWTH=1 \
     -s INITIAL_MEMORY=8388608 \
     -s STACK_SIZE=4194304 \
-    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','addFunction','removeFunction']" \
-    -s "EXPORTED_FUNCTIONS=['_malloc', '_free', '_processData']" \
+    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \
+    -s "EXPORTED_FUNCTIONS=['_malloc', '_free']" \
     --bind

@@ -1,115 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <title>File Input Example</title>
+  <meta charset="UTF-8" />
+  <title>WASM Worker Demo</title>
 </head>
 
 <body>
-  <input type="file" id="fileInput" multiple />
-  <button id="readFileButton">Read File</button>
+  <div style="padding-bottom: 20px;">
+    <h3>Convert any RAW image to PNG</h3>
+    <input style="padding-bottom: 10px;" type="file" id="fileInput" multiple />
+    <br>
+    <button disabled id="downloadButton">Download as PNG</button>
+  </div>
   <div id="output"></div>
 
   <script type="module">
-    import createLibRawModule from './out/libraw.js';
-
-    let images = new Array();
-
-    const Module = await createLibRawModule();
-
     const fileInput = document.getElementById('fileInput');
-    const readFileButton = document.getElementById('readFileButton');
     const outputDiv = document.getElementById('output');
+    const downloadButton = document.getElementById('downloadButton');
+    var intervalId;
 
-    readFileButton.addEventListener('click', async () => {
+    // Create the worker with type="module" to allow ES6 imports inside the worker
+    const worker = new Worker('./wasm-worker.js', { type: 'module' });
+
+    // Listen for messages coming back from the worker
+    worker.onmessage = (event) => {
+      const { type, width, height, colors, imageSize, buffer } = event.data;
+
+      if (type === 'processed') {
+        // buffer is a transferred ArrayBuffer containing the processed image data
+        const processedImageData = new Uint16Array(buffer);
+
+        console.log(`Got processed image from worker: ${width}x${height}, colors=${colors}, size=${imageSize} bytes`);
+        console.log(processedImageData);
+        // Display or manipulate the returned image
+        displayImage(processedImageData, width, height);
+        stopLoading();
+
+        // Enable download after at least one image is processed
+        downloadButton.disabled = false;
+        // outputDiv.textContent = `Processed Image: ${width} x ${height}, Colors=${colors}, Size=${imageSize} bytes`;
+      }
+      else if (type === 'error') {
+        outputDiv.textContent = `Error in Worker: ${event.data.message}`;
+      }
+    };
+
+    fileInput.addEventListener('change', async () => {
+      startLoading();
 
       for (let file of fileInput.files) {
-        if (!file) {
-          outputDiv.textContent = 'Please select a file';
-          return;
-        }
-
         try {
           const arrayBuffer = await file.arrayBuffer();
-          const rawImageArray = new Uint8Array(arrayBuffer);
 
-          // Allocate memory in WebAssembly heap
-          const buf = Module._malloc(arrayBuffer.byteLength);
-          Module.HEAPU8.set(rawImageArray, buf);
-
-          // Allocate memory for width, height, colors, and image size
-          const widthPtr = Module._malloc(4);
-          const heightPtr = Module._malloc(4);
-          const colorsPtr = Module._malloc(4);
-          const imageSizePtr = Module._malloc(4);
-
-          // Call the processImageData function
-          const imagePtr = Module._processImageData(buf, arrayBuffer.byteLength, widthPtr, heightPtr, colorsPtr, imageSizePtr);
-
-          if (!imagePtr) {
-            throw new Error("Image processing failed");
-          }
-
-          // Read the output parameters
-          const width = Module.HEAP32[widthPtr / 4];
-          const height = Module.HEAP32[heightPtr / 4];
-          const colors = Module.HEAP32[colorsPtr / 4];
-          const imageSize = Module.HEAP32[imageSizePtr / 4];
-
-
-          console.log(`Processed Image - Width: ${width}, Height: ${height}, Colors: ${colors}, Size: ${imageSize} bytes`);
-
-          // Convert image data to Uint8Array
-          const processedImageData = new Uint8Array(Module.HEAPU8.buffer, imagePtr, imageSize);
-
-          images.push(processedImageData);
-
-          // Display some pixel data in console
-          console.log('First few bytes of processed image:', processedImageData.slice(20000000, 2000010));
-
-          // displayImage(processedImageData, width, height);
-
-          // Free allocated memory
-          Module._free(buf);
-          Module._free(widthPtr);
-          Module._free(heightPtr);
-          Module._free(colorsPtr);
-          Module._free(imageSizePtr);
-          Module._free(imagePtr); // Free the processed image buffer
-
-          // Output image info
-          // outputDiv.textContent = `Processed Image: ${width}x${height}, ${colors} colors, Size: ${imageSize} bytes`;
-
-        } catch (error) {
-          outputDiv.textContent = `Error processing file: ${error.message}`;
+          // Send the file's ArrayBuffer to the Worker as a Transferable
+          worker.postMessage(
+            { type: 'process', fileBuffer: arrayBuffer },
+            [arrayBuffer] // Transfer ownership to worker
+          );
+        } catch (err) {
+          outputDiv.textContent = `Error reading file: ${err}`;
         }
       }
-
-      console.log(images);
     });
 
+    let tourniquetThree = 0;
+
+    function startLoading() {
+      // Save the interval ID returned by setInterval
+      intervalId = setInterval(() => {
+        if (tourniquetThree == 3) {
+          tourniquetThree = 0;
+        } else {
+          tourniquetThree++;
+        }
+        // outputDiv.innerHTML = "Loading" + ".".repeat(tourniquetThree);
+      }, 330);
+    }
+
+    function stopLoading() {
+      clearInterval(intervalId);
+    }
+
+    // Displays the Uint16Array data onto a Canvas
     function displayImage(processedImageArray, width, height) {
+      // Clear any previous output
+      outputDiv.innerHTML = '';
+
       const canvas = document.createElement('canvas');
       canvas.style.maxWidth = '1000px';
       canvas.width = width;
       canvas.height = height;
-      document.body.appendChild(canvas); // Append canvas to the body or another container
+      outputDiv.appendChild(canvas);
 
       const ctx = canvas.getContext('2d');
       const imageData = ctx.createImageData(width, height);
 
-      // Assuming the processed image data is in RGB format
+      // IMPORTANT: If your processed data is 16-bit per channel,
+      // you need an appropriate scaling. For example, if the max
+      // value is 65535, you might do processed[i] / 257.
+      // This code simply does (value / 255) for demonstration.
       for (let i = 0, j = 0; i < processedImageArray.length; i += 3, j += 4) {
-        imageData.data[j] = processedImageArray[i];     // R
-        imageData.data[j + 1] = processedImageArray[i + 1]; // G
-        imageData.data[j + 2] = processedImageArray[i + 2]; // B
-        imageData.data[j + 3] = 255; // Alpha (fully opaque)
+        imageData.data[j] = processedImageArray[i] / 255;     // R
+        imageData.data[j + 1] = processedImageArray[i + 1] / 255; // G
+        imageData.data[j + 2] = processedImageArray[i + 2] / 255; // B
+        imageData.data[j + 3] = 255;                              // A
       }
 
       ctx.putImageData(imageData, 0, 0);
     }
 
+    // Simple function to download the current canvas as PNG
+    function downloadCanvasAsImage() {
+      const canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = 'canvas_image.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
 
+    downloadButton.addEventListener('click', () => {
+      downloadCanvasAsImage();
+    });
   </script>
 </body>
 
