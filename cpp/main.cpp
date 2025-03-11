@@ -158,4 +158,5 @@ EMSCRIPTEN_BINDINGS(LibRawModule)
 {
     emscripten::function("_setParams", &setParams);
     emscripten::function("_getParams", &getParams);
+    emscripten::function("_getCameraInfo", &getCameraInfo);
 }

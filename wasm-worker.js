@@ -49,6 +49,10 @@ self.onmessage = async (event) => {
       let pp = Module._getParams();
       console.log(pp);
 
+      
+      let ci = Module._getCameraInfo();
+      console.log(ci);
+
       // Extract metadata
       const width = Module.HEAP32[widthPtr >> 2];
       const height = Module.HEAP32[heightPtr >> 2];
